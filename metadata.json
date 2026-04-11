@@ -1,8 +1,8 @@
 {
   "name": "astrbot_plugin_a2a_gateway",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "display_name": "A2A Gateway",
-  "description": "基于 A2A (Agent-to-Agent) 协议的跨 Agent 通信网关，支持多节点管理、消息路由与任务追踪",
+  "description": "基于 A2A (Agent-to-Agent) 协议的跨 Agent 通信网关，支持多节点管理、消息路由与任务追踪，支持客户端+服务端双模式",
   "author": {
     "name": "Neo",
     "github": "https://github.com/Kess66666"
@@ -21,9 +21,34 @@
       "max": 300.0,
       "description": "请求超时时间（秒）",
       "display_name": "请求超时"
+    },
+    "port_mode": {
+      "type": "string",
+      "default": "reuse",
+      "options": ["reuse", "standalone"],
+      "description": "reuse: 复用 AstrBot 主程序端口; standalone: 独立端口（需指定 port）",
+      "display_name": "端口模式"
+    },
+    "a2a_token": {
+      "type": "string",
+      "default": "",
+      "description": "A2A 服务端鉴权 Token，客户端请求时需携带 Authorization: Bearer <token>",
+      "display_name": "A2A 鉴权密钥"
+    },
+    "agent_name": {
+      "type": "string",
+      "default": "AstrBot-A2A",
+      "description": "Agent 名称，出现在 Agent Card 中",
+      "display_name": "Agent 名称"
+    },
+    "agent_description": {
+      "type": "string",
+      "default": "AstrBot powered A2A Agent with multi-agent gateway capabilities",
+      "description": "Agent 描述",
+      "display_name": "Agent 描述"
     }
   },
   "commands": [
-    "a2a", "a2a-list", "a2a-add", "a2a-remove", "a2a-send", "a2a-status", "a2a-tasks"
+    "a2a", "a2a-list", "a2a-add", "a2a-remove", "a2a-send", "a2a-status", "a2a-tasks", "a2a-token"
   ]
 }
