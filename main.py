@@ -1,4 +1,9 @@
-import json, uuid, httpx, os, hashlib, secrets
+import asyncio
+import json
+import uuid
+import httpx
+import os
+import secrets
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -66,6 +71,7 @@ class A2AGatewayPlugin(Star):
     def __init__(self, context=None, config=None, **kwargs):
         super().__init__(context)
         # 兼容模式：处理 context 被当作 config 传入的情况
+        # AstrBot 某些版本/环境下初始化参数顺序不一致，需要兜底
         if context is not None and not hasattr(context, 'get_plugin_data_dir'):
             if config is None:
                 config = context
@@ -110,7 +116,6 @@ class A2AGatewayPlugin(Star):
 
     async def init(self, *args, **kwargs):
         """插件初始化"""
-        import asyncio
         # 尝试获取事件总线用于内部通信
         if self.context and hasattr(self.context, 'event_bus'):
             self._event_bus = self.context.event_bus
@@ -162,8 +167,6 @@ class A2AGatewayPlugin(Star):
     @Star.route("/api/a2a/proxy", methods=["POST"])
     async def handle_a2a_message(self, request):
         """处理 A2A JSON-RPC 消息"""
-        import asyncio
-        
         # 安全鉴权
         auth_ok, error_msg = await self._check_auth(request)
         if not auth_ok:
@@ -193,7 +196,7 @@ class A2AGatewayPlugin(Star):
                 logger.info(f"[A2A Gateway] 收到消息 from {role}: {content[:100]}...")
                 
                 # 创建 Future 用于等待响应
-                future = asyncio.Future()
+                future: asyncio.Future = asyncio.Future()
                 self._pending_requests[str(msg_id)] = future
                 
                 try:
@@ -223,7 +226,7 @@ class A2AGatewayPlugin(Star):
                     
                 finally:
                     self._pending_requests.pop(str(msg_id), None)
-                    
+                   
             elif method == "tasks/cancel":
                 # 取消任务（简化实现）
                 return {"status": 200, "body": json.dumps({
@@ -285,11 +288,11 @@ class A2AGatewayPlugin(Star):
                     self.user_id = "a2a-gateway"
                     self.group_id = None
                     
-                async def plain_result(self, text):
+                async def plain_result(self, text: str):
                     future.set_result(text)
                     return [Plain(text=text)]
                 
-                async def image_result(self, image_url):
+                async def image_result(self, image_url: str):
                     return []
             
             # 发布到事件总线
