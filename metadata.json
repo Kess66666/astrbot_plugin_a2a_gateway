@@ -1,0 +1,29 @@
+{
+  "name": "astrbot_plugin_a2a_gateway",
+  "version": "1.0.0",
+  "display_name": "A2A Gateway",
+  "description": "基于 A2A (Agent-to-Agent) 协议的跨 Agent 通信网关，支持多节点管理、消息路由与任务追踪",
+  "author": {
+    "name": "Neo",
+    "github": "https://github.com/Kess66666"
+  },
+  "homepage": "https://github.com/Kess66666/astrbot_plugin_a2a_gateway",
+  "keywords": ["a2a", "gateway", "agent", "mcp", "multi-agent"],
+  "platform": ["astrbot"],
+  "dependencies": {
+    "httpx": ">=0.25.0"
+  },
+  "config_schema": {
+    "timeout": {
+      "type": "number",
+      "default": 30.0,
+      "min": 5.0,
+      "max": 300.0,
+      "description": "请求超时时间（秒）",
+      "display_name": "请求超时"
+    }
+  },
+  "commands": [
+    "a2a", "a2a-list", "a2a-add", "a2a-remove", "a2a-send", "a2a-status", "a2a-tasks"
+  ]
+}
