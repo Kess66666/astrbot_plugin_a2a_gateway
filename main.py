@@ -13,7 +13,7 @@ from datetime import datetime
 from astrbot.api.all import *
 from astrbot.api import AstrBotConfig
 
-logger.critical("💥💥💥 [A2A Gateway] v1.3.0 正在載入模塊... 💥💥💥")
+logger.critical("💥💥💥 [A2A Gateway] v1.3.1 正在載入模塊... 💥💥💥")
 
 @dataclass
 class Peer:
@@ -86,7 +86,17 @@ class A2AGatewayPlugin(Star):
 
         self._load_peers()
 
-        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.0), Context ID: {id(self.context)}")
+        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.1), Context ID: {id(self.context)}")
+
+    # ─── Token Getter ───────────────────────────────────────────────────────────
+    def get_a2a_token(self) -> str:
+        """
+        防御性 Token 获取，优先级：内存变量 > 配置文件 > admin123 兜底
+        """
+        token = getattr(self, "_a2a_token", "")
+        if not token and self.config:
+            token = self.config.get("a2a_token", "")
+        return token if token else "admin123"
 
     def _get_storage_path(self) -> str:
         if self.context and hasattr(self.context, 'get_plugin_data_dir'):
@@ -133,35 +143,25 @@ class A2AGatewayPlugin(Star):
 
         await asyncio.sleep(2)
 
-        if not self._a2a_token:
-            self._a2a_token = secrets.token_urlsafe(32)
-            logger.critical(f"🔑 [A2A Gateway] 未设置 A2A Token，已自动生成")
+        logger.critical(f"🔑 [A2A Gateway] Token 策略已就位，GETTER: 内存 > 配置 > admin123")
 
         # ✅ 根据配置决定是否注册路由
         if self._auto_register:
-            # ✅ 双重保险：异步守护任务 + call_later 备选方案
             logger.critical("🛣️ [A2A Gateway] >>> 启动异步守护士台路由注册任务...")
             asyncio.create_task(self.delay_register())
 
-            # ✅ 备选方案：使用 call_later 确保注册必定执行
             loop = asyncio.get_event_loop()
             loop.call_later(15, lambda: asyncio.create_task(self.delay_register()))
             logger.critical("🕐 [A2A Gateway] >>> 已设置 15 秒后备注册任务 (call_later)")
         else:
             logger.critical("⚠️ [A2A Gateway] auto_register 已禁用，跳过 Web 路由注册")
 
-        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.0), Context ID: {id(self.context)}")
+        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.1), Context ID: {id(self.context)}")
 
     async def on_load(self):
-        """插件加载时调用（路由已移至 delay_register 中异步注册，此处保留兼容）"""
         pass
 
-    # NOTE: 由于 AstrBot 启动顺序问题，Web 路由注册采用 15 秒延迟及双重守护机制，请勿随意缩短延迟时间。
     async def delay_register(self):
-        """
-        ✅ 异步守护注册：延迟 15 秒后执行路由注册
-        确保 AstrBot 核心系统完全就绪后再注册 Web API
-        """
         try:
             logger.critical("⏳ [A2A Gateway] 异步守护任务启动，等待 15 秒让系统稳定...")
             await asyncio.sleep(15)
@@ -172,10 +172,6 @@ class A2AGatewayPlugin(Star):
             logger.critical(traceback.format_exc())
 
     async def _register_web_routes(self):
-        """
-        注册 Web 路由到 /api/plug/ 前缀下
-        成功后强制写入 self.registered_routes，确保 /a2a_status 可读
-        """
         try:
             logger.critical("🌐 [A2A Gateway] >>> 开始注册 Web 路由")
             if not self.context:
@@ -195,11 +191,10 @@ class A2AGatewayPlugin(Star):
             registered_count = 0
             prefix = "/astrbot_plugin_a2a_gateway"
 
-            # 注册 /astrbot_plugin_a2a_gateway/test 路由
             logger.critical(f"📡 [A2A Gateway] >>> 尝试注册 {prefix}/test 路由")
             try:
                 async def test_handler(*args, **kwargs):
-                    return {"status": "ok", "message": "A2A Gateway Test Route v1.3.0"}
+                    return {"status": "ok", "message": "A2A Gateway Test Route v1.3.1"}
 
                 self.context.register_web_api(
                     route=f"{prefix}/test",
@@ -214,7 +209,6 @@ class A2AGatewayPlugin(Star):
                 logger.critical(f"❌ [A2A Gateway] {prefix}/test 路由注册失败: {e}")
                 logger.critical(traceback.format_exc())
 
-            # 注册 /astrbot_plugin_a2a_gateway/agent.json 路由
             logger.critical(f"🆔 [A2A Gateway] >>> 尝试注册 {prefix}/agent.json 路由")
             try:
                 self.context.register_web_api(
@@ -230,7 +224,6 @@ class A2AGatewayPlugin(Star):
                 logger.critical(f"❌ [A2A Gateway] {prefix}/agent.json 路由注册失败: {e}")
                 logger.critical(traceback.format_exc())
 
-            # 注册 /astrbot_plugin_a2a_gateway/api/a2a/proxy 路由
             logger.critical(f"🚪 [A2A Gateway] >>> 尝试注册 {prefix}/api/a2a/proxy 路由")
             try:
                 self.context.register_web_api(
@@ -253,9 +246,8 @@ class A2AGatewayPlugin(Star):
             logger.critical(traceback.format_exc())
 
     async def _handle_agent_card(self, *args, **kwargs) -> Dict[str, Any]:
-        """GET /astrbot_plugin_a2a_gateway/agent.json - Agent Card (A2A 标准端点)"""
         logger.info("[A2A Gateway] >>> 收到 /agent.json 请求")
-        if self._a2a_token:
+        if self.get_a2a_token():
             try:
                 from quart import request
                 auth_header = request.headers.get("Authorization", "")
@@ -267,7 +259,7 @@ class A2AGatewayPlugin(Star):
         return {
             "name": self._agent_name,
             "description": self._agent_desc,
-            "version": "1.3.0",
+            "version": "1.3.1",
             "capabilities": {
                 "streaming": False,
                 "pushNotifications": False,
@@ -280,11 +272,10 @@ class A2AGatewayPlugin(Star):
         }
 
     async def _handle_a2a_message(self, *args, **kwargs) -> Dict[str, Any]:
-        """POST /astrbot_plugin_a2a_gateway/api/a2a/proxy - 处理 A2A JSON-RPC"""
         logger.info("[A2A Gateway] >>> 收到 /api/a2a/proxy 请求")
         self._cleanup_stale_requests(max_age=60.0)
 
-        if self._a2a_token:
+        if self.get_a2a_token():
             try:
                 from quart import request
                 auth_header = request.headers.get("Authorization", "")
@@ -356,7 +347,7 @@ class A2AGatewayPlugin(Star):
         parts = auth_header.split(" ", 1)
         if len(parts) != 2 or parts[0].lower() != "bearer":
             return False
-        return parts[1] == self._a2a_token
+        return parts[1] == self.get_a2a_token()
 
     async def _inject_message(self, content: str, msg_id: str):
         try:
@@ -410,10 +401,11 @@ class A2AGatewayPlugin(Star):
 
     @command("a2a")
     async def handle_a2a(self, event: AstrMessageEvent):
-        token_display = self._a2a_token[:8] + "..." if self._a2a_token else "未设置"
+        token = self.get_a2a_token()
+        token_display = token[:8] + "..." if token else "未设置"
         routes_info = "\n   ".join(self.registered_routes) if self.registered_routes else "(等待注册)"
         yield event.plain_result(
-            f"📡 A2A Gateway v1.3.0\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"📡 A2A Gateway v1.3.1\n━━━━━━━━━━━━━━━━━━━━\n"
             f"Token: {token_display}\n"
             f"已注册路由:\n   {routes_info}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -557,7 +549,7 @@ class A2AGatewayPlugin(Star):
         routes_display = "\n   ".join(registered) if registered else "(延迟注册中，15秒后刷新)"
         yield event.plain_result(
             f"📊 A2A Gateway 状态\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"版本: v1.3.0\n"
+            f"版本: v1.3.1\n"
             f"节点: {total_peers} 个 (🟢 {enabled_peers})\n"
             f"任务: {total_tasks} 个 (✅ {completed_tasks})\n"
             f"存储: {self._storage_path}\n"
@@ -584,12 +576,9 @@ class A2AGatewayPlugin(Star):
             self._a2a_token = new_token
             yield event.plain_result(f"🔑 Token 已重置!\n\n`{new_token}`")
         else:
-            if self._a2a_token:
-                yield event.plain_result(f"🔑 当前 Token:\n\n`{self._a2a_token}`")
-            else:
-                yield event.plain_result("⚠️ 未配置 Token")
+            current_token = self.get_a2a_token()
+            yield event.plain_result(f"🔑 当前 Token:\n\n`{current_token}`")
 
-    # ✅ 强制手动触发：/a2a_force_reg
     @command("a2a_force_reg")
     async def cmd_force_reg(self, event: AstrMessageEvent):
         yield event.plain_result("🔧 正在强制注册 Web 路由，请查看日志...")
@@ -599,7 +588,6 @@ class A2AGatewayPlugin(Star):
         except Exception as e:
             yield event.plain_result(f"❌ 路由注册失败: {e}\n\n{traceback.format_exc()}")
 
-    # ✅ 打印 context 属性：/a2a_debug_ctx
     @command("a2a_debug_ctx")
     async def cmd_debug_ctx(self, event: AstrMessageEvent):
         ctx_attrs = [attr for attr in dir(self.context) if not attr.startswith('_')]
