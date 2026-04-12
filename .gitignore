@@ -1,0 +1,10 @@
+# A2A 节点配置（包含 Token，禁止泄露）
+peers.json
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# AstrBot 插件数据
+data/
