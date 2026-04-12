@@ -145,7 +145,6 @@ class A2AGatewayPlugin(Star):
 
         logger.critical(f"🔑 [A2A Gateway] Token 策略已就位，GETTER: 内存 > 配置 > admin123")
 
-        # ✅ 根据配置决定是否注册路由
         if self._auto_register:
             logger.critical("🛣️ [A2A Gateway] >>> 启动异步守护士台路由注册任务...")
             asyncio.create_task(self.delay_register())
@@ -431,9 +430,19 @@ class A2AGatewayPlugin(Star):
             lines.append(f"{status_icon} {name}\n   URL: {peer.base_url}")
         yield event.plain_result("\n".join(lines))
 
+    # ─── 参数解析通用函数 ──────────────────────────────────────────────────────
+    def _strip_command_prefix(self, raw_text: str, cmd_name: str) -> str:
+        """去掉指令前缀，确保 args[0] 是参数而不是命令名"""
+        for prefix in [f"/{cmd_name}", f"{cmd_name}"]:
+            if raw_text.startswith(prefix):
+                return raw_text[len(prefix):].strip()
+        return raw_text.strip()
+
     @command("a2a_add")
     async def cmd_add(self, event: AstrMessageEvent):
-        args = event.message_str.strip().split()
+        raw_text = self._strip_command_prefix(event.message_str.strip(), "a2a_add")
+        args = raw_text.split()
+
         if len(args) < 2:
             yield event.plain_result("❌ 用法: `/a2a_add <名称> <AgentCard URL> [token]`")
             return
@@ -441,6 +450,9 @@ class A2AGatewayPlugin(Star):
         name = args[0]
         agent_card_url = args[1]
         token = args[2] if len(args) > 2 else ""
+
+        # ✅ 解析日志，打印防止低级错误
+        logger.info(f"[A2A Gateway] 解析添加参数: name={name}, url={agent_card_url}, token={'***' if token else '无'}")
 
         base_url = agent_card_url.rstrip("/")
         for suffix in ["/agent.json", "/.well-known/agent.json"]:
@@ -456,8 +468,10 @@ class A2AGatewayPlugin(Star):
             skills = card.get("skills", [])
             if token:
                 auth_type = "bearer"
+            logger.info(f"[A2A Gateway] 获取 Agent Card 成功: {card.get('name', 'unknown')}")
         except Exception as e:
             logger.warning(f"[A2A Gateway] 获取 Agent Card 失败: {e}")
+            yield event.plain_result(f"⚠️ 获取 Agent Card 失败，节点可能无法通信: {e}")
 
         peer = Peer(
             name=name, agent_card_url=agent_card_url, base_url=base_url,
@@ -472,11 +486,16 @@ class A2AGatewayPlugin(Star):
 
     @command("a2a_remove")
     async def cmd_remove(self, event: AstrMessageEvent):
-        args = event.message_str.strip().split()
+        raw_text = self._strip_command_prefix(event.message_str.strip(), "a2a_remove")
+        args = raw_text.split()
+
         if len(args) < 1:
             yield event.plain_result("❌ 用法: `/a2a_remove <名称>`")
             return
         name = args[0]
+
+        logger.info(f"[A2A Gateway] 解析删除参数: name={name}")
+
         if name not in self.peers:
             yield event.plain_result(f"❌ 节点 [{name}] 不存在")
             return
@@ -486,13 +505,17 @@ class A2AGatewayPlugin(Star):
 
     @command("a2a_send")
     async def cmd_send(self, event: AstrMessageEvent):
-        args = event.message_str.strip().split(maxsplit=1)
+        raw_text = self._strip_command_prefix(event.message_str.strip(), "a2a_send")
+        args = raw_text.split(maxsplit=1)
+
         if len(args) < 2:
             yield event.plain_result("❌ 用法: `/a2a_send <节点名> <消息>`")
             return
 
         name = args[0]
         message_text = args[1]
+
+        logger.info(f"[A2A Gateway] 解析发送参数: name={name}, msg_len={len(message_text)}")
 
         if name not in self.peers:
             yield event.plain_result(f"❌ 节点 [{name}] 不存在")
@@ -570,7 +593,11 @@ class A2AGatewayPlugin(Star):
 
     @command("a2a_token")
     async def cmd_token(self, event: AstrMessageEvent):
-        args = event.message_str.strip().split()
+        raw_text = self._strip_command_prefix(event.message_str.strip(), "a2a_token")
+        args = raw_text.split()
+
+        logger.info(f"[A2A Gateway] Token 指令参数: {args}")
+
         if len(args) > 0 and args[0].lower() == "reset":
             new_token = secrets.token_urlsafe(32)
             self._a2a_token = new_token
