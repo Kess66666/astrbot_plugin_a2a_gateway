@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 
 from astrbot.api.all import *
+from astrbot.api import AstrBotConfig
 
 logger.critical("💥💥💥 [A2A Gateway] v1.3.0 正在載入模塊... 💥💥💥")
 
@@ -61,7 +62,7 @@ class A2AClient:
 
 
 class A2AGatewayPlugin(Star):
-    def __init__(self, context: Context, config: dict = None, **kwargs):
+    def __init__(self, context: Context, config: AstrBotConfig = None, **kwargs):
         super().__init__(context)
         self.context = context
         self.config = config if config else {}
@@ -78,6 +79,7 @@ class A2AGatewayPlugin(Star):
         self._a2a_token: str = self.config.get("a2a_token", "")
         self._agent_name: str = self.config.get("agent_name", "AstrBot-A2A")
         self._agent_desc: str = self.config.get("agent_description", "AstrBot powered A2A Agent")
+        self._auto_register: bool = self.config.get("auto_register", True)
 
         self._storage_path = self._get_storage_path()
         os.makedirs(self._storage_path, exist_ok=True)
@@ -123,7 +125,7 @@ class A2AGatewayPlugin(Star):
         if stale_ids:
             logger.warning(f"[A2A Gateway] 清理了 {len(stale_ids)} 个超时请求")
 
-    async def init(self, context: Context, config: dict = None, **kwargs):
+    async def init(self, context: Context, config: AstrBotConfig = None, **kwargs):
         logger.critical(f"DEBUG: Entering init, context is {type(self.context)}")
         await super().init(context)
         logger.critical(f"⚡ [A2A Gateway] >>> 开始异步初始化 (init), Context ID: {id(self.context)}")
@@ -135,14 +137,18 @@ class A2AGatewayPlugin(Star):
             self._a2a_token = secrets.token_urlsafe(32)
             logger.critical(f"🔑 [A2A Gateway] 未设置 A2A Token，已自动生成")
 
-        # ✅ 双重保险：异步守护任务 + call_later 备选方案
-        logger.critical("🛣️ [A2A Gateway] >>> 启动异步守护士台路由注册任务...")
-        asyncio.create_task(self.delay_register())
+        # ✅ 根据配置决定是否注册路由
+        if self._auto_register:
+            # ✅ 双重保险：异步守护任务 + call_later 备选方案
+            logger.critical("🛣️ [A2A Gateway] >>> 启动异步守护士台路由注册任务...")
+            asyncio.create_task(self.delay_register())
 
-        # ✅ 备选方案：使用 call_later 确保注册必定执行
-        loop = asyncio.get_event_loop()
-        loop.call_later(15, lambda: asyncio.create_task(self.delay_register()))
-        logger.critical("🕐 [A2A Gateway] >>> 已设置 15 秒后备注册任务 (call_later)")
+            # ✅ 备选方案：使用 call_later 确保注册必定执行
+            loop = asyncio.get_event_loop()
+            loop.call_later(15, lambda: asyncio.create_task(self.delay_register()))
+            logger.critical("🕐 [A2A Gateway] >>> 已设置 15 秒后备注册任务 (call_later)")
+        else:
+            logger.critical("⚠️ [A2A Gateway] auto_register 已禁用，跳过 Web 路由注册")
 
         logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.0), Context ID: {id(self.context)}")
 

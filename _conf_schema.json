@@ -1,0 +1,39 @@
+{
+    "agent_name": {
+        "description": "A2A Agent 名称",
+        "type": "string",
+        "hint": "对外广播的 Agent 标识名称",
+        "default": "AstrBot-A2A",
+        "maxLength": 64
+    },
+    "agent_description": {
+        "description": "A2A Agent 描述",
+        "type": "string",
+        "hint": "对外广播的 Agent 能力描述",
+        "default": "AstrBot powered A2A Agent",
+        "maxLength": 256
+    },
+    "a2a_token": {
+        "description": "A2A 访问令牌",
+        "type": "string",
+        "hint": "留空则自动生成。Bearer Token 用于鉴权",
+        "obvious_hint": true,
+        "default": "",
+        "minLength": 0,
+        "maxLength": 128
+    },
+    "timeout": {
+        "description": "请求超时时间（秒）",
+        "type": "float",
+        "hint": "A2A 消息发送和接收的超时时间",
+        "default": 30.0,
+        "minimum": 5.0,
+        "maximum": 300.0
+    },
+    "auto_register": {
+        "description": "启动时自动注册 Web 路由",
+        "type": "bool",
+        "hint": "启用后自动将 /api/plug/agent.json 和 /api/plug/api/a2a/proxy 注册到面板",
+        "default": true
+    }
+}
