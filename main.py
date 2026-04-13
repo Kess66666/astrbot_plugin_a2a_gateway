@@ -13,7 +13,7 @@ from datetime import datetime
 from astrbot.api.all import *
 from astrbot.api import AstrBotConfig
 
-logger.critical("💥💥💥 [A2A Gateway] v1.3.1 正在載入模塊... 💥💥💥")
+logger.critical("💥💥💥 [A2A Gateway] v1.3.2 正在載入模塊... 💥💥💥")
 
 @dataclass
 class Peer:
@@ -86,7 +86,7 @@ class A2AGatewayPlugin(Star):
 
         self._load_peers()
 
-        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.1), Context ID: {id(self.context)}")
+        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.2), Context ID: {id(self.context)}")
 
     # ─── Token Getter ───────────────────────────────────────────────────────────
     def get_a2a_token(self) -> str:
@@ -155,7 +155,7 @@ class A2AGatewayPlugin(Star):
         else:
             logger.critical("⚠️ [A2A Gateway] auto_register 已禁用，跳过 Web 路由注册")
 
-        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.1), Context ID: {id(self.context)}")
+        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.2), Context ID: {id(self.context)}")
 
     async def on_load(self):
         pass
@@ -193,7 +193,7 @@ class A2AGatewayPlugin(Star):
             logger.critical(f"📡 [A2A Gateway] >>> 尝试注册 {prefix}/test 路由")
             try:
                 async def test_handler(*args, **kwargs):
-                    return {"status": "ok", "message": "A2A Gateway Test Route v1.3.1"}
+                    return {"status": "ok", "message": "A2A Gateway Test Route v1.3.2"}
 
                 self.context.register_web_api(
                     route=f"{prefix}/test",
@@ -238,6 +238,21 @@ class A2AGatewayPlugin(Star):
                 logger.critical(f"❌ [A2A Gateway] {prefix}/api/a2a/proxy 路由注册失败: {e}")
                 logger.critical(traceback.format_exc())
 
+            # 🆕 关键修复：注册根路径以兼容旧版客户端/指令直接请求插件目录的行为
+            logger.critical(f"🏠 [A2A Gateway] >>> 尝试注册 {prefix} (根路径) POST 路由")
+            try:
+                self.context.register_web_api(
+                    route=f"{prefix}",
+                    view_handler=self._handle_a2a_message,
+                    methods=["POST"],
+                    desc="A2A Root Message Handler"
+                )
+                self.registered_routes.append(f"/api/plug{prefix}")
+                logger.critical(f"✅ [A2A Gateway] {prefix} (根路径) POST 路由注册成功")
+                registered_count += 1
+            except Exception as e:
+                logger.critical(f"⚠️ [A2A Gateway] {prefix} (根路径) 注册失败 (可能已存在): {e}")
+
             logger.critical(f"🏁 [A2A Gateway] 路由注册完成，共注册 {registered_count} 个路由")
             logger.critical(f"📋 [A2A Gateway] 当前 registered_routes: {self.registered_routes}")
         except Exception as e:
@@ -258,7 +273,7 @@ class A2AGatewayPlugin(Star):
         return {
             "name": self._agent_name,
             "description": self._agent_desc,
-            "version": "1.3.1",
+            "version": "1.3.2",
             "capabilities": {
                 "streaming": False,
                 "pushNotifications": False,
@@ -404,7 +419,7 @@ class A2AGatewayPlugin(Star):
         token_display = token[:8] + "..." if token else "未设置"
         routes_info = "\n   ".join(self.registered_routes) if self.registered_routes else "(等待注册)"
         yield event.plain_result(
-            f"📡 A2A Gateway v1.3.1\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"📡 A2A Gateway v1.3.2\n━━━━━━━━━━━━━━━━━━━━\n"
             f"Token: {token_display}\n"
             f"已注册路由:\n   {routes_info}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -472,6 +487,7 @@ class A2AGatewayPlugin(Star):
         except Exception as e:
             logger.warning(f"[A2A Gateway] 获取 Agent Card 失败: {e}")
             yield event.plain_result(f"⚠️ 获取 Agent Card 失败，节点可能无法通信: {e}")
+            # 允许添加，但记录警告
 
         peer = Peer(
             name=name, agent_card_url=agent_card_url, base_url=base_url,
@@ -572,7 +588,7 @@ class A2AGatewayPlugin(Star):
         routes_display = "\n   ".join(registered) if registered else "(延迟注册中，15秒后刷新)"
         yield event.plain_result(
             f"📊 A2A Gateway 状态\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"版本: v1.3.1\n"
+            f"版本: v1.3.2\n"
             f"节点: {total_peers} 个 (🟢 {enabled_peers})\n"
             f"任务: {total_tasks} 个 (✅ {completed_tasks})\n"
             f"存储: {self._storage_path}\n"
