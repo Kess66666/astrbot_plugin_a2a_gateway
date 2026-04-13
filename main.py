@@ -13,7 +13,7 @@ from datetime import datetime
 from astrbot.api.all import *
 from astrbot.api import AstrBotConfig
 
-logger.critical("💥💥💥 [A2A Gateway] v1.3.5 正在載入模塊... 💥💥💥")
+logger.critical("💥💥💥 [A2A Gateway] v1.3.6 正在載入模塊... 💥💥💥")
 
 @dataclass
 class Peer:
@@ -84,7 +84,7 @@ class A2AGatewayPlugin(Star):
 
         self._load_peers()
 
-        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.5), Context ID: {id(self.context)}")
+        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.6), Context ID: {id(self.context)}")
 
     # ─── Token Getter ───────────────────────────────────────────────────────────
     def get_a2a_token(self) -> str:
@@ -117,7 +117,7 @@ class A2AGatewayPlugin(Star):
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     async def init(self, context: Context, config: AstrBotConfig = None, **kwargs):
-        logger.critical(f"⚡ [A2A Gateway] >>> 开始异步初始化 (v1.3.5)")
+        logger.critical(f"⚡ [A2A Gateway] >>> 开始异步初始化 (v1.3.6)")
         await super().init(context)
 
         await asyncio.sleep(2)
@@ -128,7 +128,7 @@ class A2AGatewayPlugin(Star):
             loop = asyncio.get_event_loop()
             loop.call_later(15, lambda: asyncio.create_task(self.delay_register()))
 
-        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.5)")
+        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.6)")
 
     async def on_load(self):
         pass
@@ -157,23 +157,23 @@ class A2AGatewayPlugin(Star):
 
             # 1. Test Route
             async def test_handler(*args, **kwargs):
-                return {"status": "ok", "message": "A2A Gateway Test Route v1.3.5"}
+                return {"status": "ok", "message": "A2A Gateway Test Route v1.3.6"}
 
             self.context.register_web_api(route=f"{prefix}/test", view_handler=test_handler, methods=["GET"], desc="Test Route")
             self.registered_routes.append(f"/api/plug{prefix}/test")
             registered_count += 1
 
-            # 2. Agent Card
+            # 2. Agent Card (Public Discovery)
             self.context.register_web_api(route=f"{prefix}/agent.json", view_handler=self._handle_agent_card, methods=["GET"], desc="A2A Agent Card")
             self.registered_routes.append(f"/api/plug{prefix}/agent.json")
             registered_count += 1
 
-            # 3. A2A Proxy
+            # 3. A2A Proxy (Protected)
             self.context.register_web_api(route=f"{prefix}/api/a2a/proxy", view_handler=self._handle_a2a_message, methods=["POST"], desc="A2A JSON-RPC Proxy")
             self.registered_routes.append(f"/api/plug{prefix}/api/a2a/proxy")
             registered_count += 1
 
-            # 4. Root Path
+            # 4. Root Path (Protected)
             self.context.register_web_api(route=f"{prefix}", view_handler=self._handle_a2a_message, methods=["POST"], desc="A2A Root Message Handler")
             self.registered_routes.append(f"/api/plug{prefix}")
             registered_count += 1
@@ -184,20 +184,12 @@ class A2AGatewayPlugin(Star):
             logger.critical(traceback.format_exc())
 
     async def _handle_agent_card(self, *args, **kwargs) -> Dict[str, Any]:
-        logger.info("[A2A Gateway] >>> 收到 /agent.json 请求")
-        if self.get_a2a_token():
-            try:
-                from quart import request
-                auth_header = request.headers.get("Authorization", "")
-                if not self._verify_token(auth_header):
-                    return {"error": "Unauthorized", "code": 401}
-            except ImportError:
-                pass
-
+        logger.info("[A2A Gateway] >>> 收到 /agent.json 请求 (Public Discovery)")
+        # ✅ v1.3.6 Fix: 移除 /agent.json 的 Token 验证，允许公开发现
         return {
             "name": self._agent_name,
             "description": self._agent_desc,
-            "version": "1.3.5",
+            "version": "1.3.6",
             "capabilities": {"streaming": False, "pushNotifications": False, "stateTransitions": False},
             "skills": [{"id": "general-chat", "name": "General Chat", "description": "通用对话能力"}],
             "url": f"/api/plug/astrbot_plugin_a2a_gateway/api/a2a/proxy"
@@ -206,6 +198,7 @@ class A2AGatewayPlugin(Star):
     async def _handle_a2a_message(self, *args, **kwargs) -> Dict[str, Any]:
         logger.info("[A2A Gateway] >>> 收到 A2A 消息请求")
 
+        # ✅ 保留消息端点的鉴权
         if self.get_a2a_token():
             try:
                 from quart import request
@@ -239,8 +232,6 @@ class A2AGatewayPlugin(Star):
 
                 logger.info(f"[A2A Gateway] >>> 开始处理消息: {content[:50]}...")
                 
-                # ✅ v1.3.5 修复：使用 get_using_provider + text_chat
-                # 绕过 llm_generate 的复杂签名，直接调用底层 Provider
                 try:
                     prov = self.context.get_using_provider()
                     if not prov:
@@ -249,10 +240,8 @@ class A2AGatewayPlugin(Star):
                             "error": {"code": -32000, "message": "No available LLM provider"}
                         }
 
-                    # 调用底层 text_chat
                     llm_resp = await prov.text_chat(prompt=content)
                     
-                    # 提取回复文本
                     response_text = ""
                     if hasattr(llm_resp, 'completion_text'):
                         response_text = llm_resp.completion_text
@@ -300,7 +289,7 @@ class A2AGatewayPlugin(Star):
         token_display = token[:8] + "..." if token else "未设置"
         routes_info = "\n   ".join(self.registered_routes) if self.registered_routes else "(等待注册)"
         yield event.plain_result(
-            f"📡 A2A Gateway v1.3.5\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"📡 A2A Gateway v1.3.6\n━━━━━━━━━━━━━━━━━━━━\n"
             f"Token: {token_display}\n"
             f"已注册路由:\n   {routes_info}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -449,7 +438,7 @@ class A2AGatewayPlugin(Star):
         routes_display = "\n   ".join(registered) if registered else "(延迟注册中)"
         yield event.plain_result(
             f"📊 A2A Gateway 状态\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"版本: v1.3.5\n"
+            f"版本: v1.3.6\n"
             f"节点: {total_peers} 个 (🟢 {enabled_peers})\n"
             f"任务: {total_tasks} 个 (✅ {completed_tasks})\n"
             f"存储: {self._storage_path}\n"
