@@ -1,5 +1,5 @@
 name: astrbot_plugin_a2a_gateway
-version: v1.3.6
+version: v1.3.9
 desc: A2A (Agent-to-Agent) 網關插件，支持多 Agent 互聯互通、JSON-RPC 通信、Token 鑑權、根路徑兼容
 help: "/a2a - 主菜單\n/a2a_list - 查看節點\n/a2a_add - 添加節點\n/a2a_remove - 刪除節點\n/a2a_send - 發送消息\n/a2a_status - 系統狀態\n/a2a_tasks - 查看任務列表\n/a2a_token - 查看/重置 Token\n/a2a_force_reg - 強制重新註冊路由"
 author: jyjyjyjjyyl
