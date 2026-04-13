@@ -13,7 +13,7 @@ from datetime import datetime
 from astrbot.api.all import *
 from astrbot.api import AstrBotConfig
 
-logger.critical("💥💥💥 [A2A Gateway] v1.3.2 正在載入模塊... 💥💥💥")
+logger.critical("💥💥💥 [A2A Gateway] v1.3.4 正在載入模塊... 💥💥💥")
 
 @dataclass
 class Peer:
@@ -70,8 +70,6 @@ class A2AGatewayPlugin(Star):
         self.client = A2AClient(timeout=self.config.get("timeout", 30.0))
         self.peers: Dict[str, Peer] = {}
         self.tasks: Dict[str, Task] = {}
-        self._pending_requests: Dict[str, asyncio.Future] = {}
-        self._pending_timestamps: Dict[str, float] = {}
 
         # ✅ 强制保存状态列表，用于 /a2a_status 回显
         self.registered_routes: List[str] = []
@@ -86,7 +84,7 @@ class A2AGatewayPlugin(Star):
 
         self._load_peers()
 
-        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.2), Context ID: {id(self.context)}")
+        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.4), Context ID: {id(self.context)}")
 
     # ─── Token Getter ───────────────────────────────────────────────────────────
     def get_a2a_token(self) -> str:
@@ -121,25 +119,10 @@ class A2AGatewayPlugin(Star):
         with open(peers_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def _cleanup_stale_requests(self, max_age: float = 300.0):
-        current_time = time.time()
-        stale_ids = [
-            msg_id for msg_id, timestamp in self._pending_timestamps.items()
-            if current_time - timestamp > max_age
-        ]
-        for msg_id in stale_ids:
-            future = self._pending_requests.pop(msg_id, None)
-            if future and not future.done():
-                future.set_result("请求超时，已被清理")
-            self._pending_timestamps.pop(msg_id, None)
-        if stale_ids:
-            logger.warning(f"[A2A Gateway] 清理了 {len(stale_ids)} 个超时请求")
-
     async def init(self, context: Context, config: AstrBotConfig = None, **kwargs):
         logger.critical(f"DEBUG: Entering init, context is {type(self.context)}")
         await super().init(context)
         logger.critical(f"⚡ [A2A Gateway] >>> 开始异步初始化 (init), Context ID: {id(self.context)}")
-        self._cleanup_stale_requests()
 
         await asyncio.sleep(2)
 
@@ -155,7 +138,7 @@ class A2AGatewayPlugin(Star):
         else:
             logger.critical("⚠️ [A2A Gateway] auto_register 已禁用，跳过 Web 路由注册")
 
-        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.2), Context ID: {id(self.context)}")
+        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.4), Context ID: {id(self.context)}")
 
     async def on_load(self):
         pass
@@ -180,9 +163,6 @@ class A2AGatewayPlugin(Star):
             has_api = hasattr(self.context, 'register_web_api')
             logger.critical(f"🔍 [A2A Gateway] context.register_web_api 是否存在: {has_api}")
             
-            ctx_attrs = [attr for attr in dir(self.context) if not attr.startswith('_')]
-            logger.critical(f"📋 [A2A Gateway] context 属性列表: {ctx_attrs}")
-            
             if not has_api:
                 logger.critical("❌ [A2A Gateway] context.register_web_api 不存在，路由注册失败")
                 return
@@ -190,10 +170,11 @@ class A2AGatewayPlugin(Star):
             registered_count = 0
             prefix = "/astrbot_plugin_a2a_gateway"
 
+            # 1. Test Route
             logger.critical(f"📡 [A2A Gateway] >>> 尝试注册 {prefix}/test 路由")
             try:
                 async def test_handler(*args, **kwargs):
-                    return {"status": "ok", "message": "A2A Gateway Test Route v1.3.2"}
+                    return {"status": "ok", "message": "A2A Gateway Test Route v1.3.4"}
 
                 self.context.register_web_api(
                     route=f"{prefix}/test",
@@ -202,12 +183,12 @@ class A2AGatewayPlugin(Star):
                     desc="Test Route"
                 )
                 self.registered_routes.append(f"/api/plug{prefix}/test")
-                logger.critical(f"✅ [A2A Gateway] {prefix}/test 路由注册成功 → /api/plug{prefix}/test")
+                logger.critical(f"✅ [A2A Gateway] {prefix}/test 路由注册成功")
                 registered_count += 1
             except Exception as e:
                 logger.critical(f"❌ [A2A Gateway] {prefix}/test 路由注册失败: {e}")
-                logger.critical(traceback.format_exc())
 
+            # 2. Agent Card
             logger.critical(f"🆔 [A2A Gateway] >>> 尝试注册 {prefix}/agent.json 路由")
             try:
                 self.context.register_web_api(
@@ -217,12 +198,12 @@ class A2AGatewayPlugin(Star):
                     desc="A2A Agent Card"
                 )
                 self.registered_routes.append(f"/api/plug{prefix}/agent.json")
-                logger.critical(f"✅ [A2A Gateway] {prefix}/agent.json 路由注册成功 → /api/plug{prefix}/agent.json")
+                logger.critical(f"✅ [A2A Gateway] {prefix}/agent.json 路由注册成功")
                 registered_count += 1
             except Exception as e:
                 logger.critical(f"❌ [A2A Gateway] {prefix}/agent.json 路由注册失败: {e}")
-                logger.critical(traceback.format_exc())
 
+            # 3. A2A Proxy
             logger.critical(f"🚪 [A2A Gateway] >>> 尝试注册 {prefix}/api/a2a/proxy 路由")
             try:
                 self.context.register_web_api(
@@ -232,13 +213,12 @@ class A2AGatewayPlugin(Star):
                     desc="A2A JSON-RPC Proxy"
                 )
                 self.registered_routes.append(f"/api/plug{prefix}/api/a2a/proxy")
-                logger.critical(f"✅ [A2A Gateway] {prefix}/api/a2a/proxy 路由注册成功 → /api/plug{prefix}/api/a2a/proxy")
+                logger.critical(f"✅ [A2A Gateway] {prefix}/api/a2a/proxy 路由注册成功")
                 registered_count += 1
             except Exception as e:
                 logger.critical(f"❌ [A2A Gateway] {prefix}/api/a2a/proxy 路由注册失败: {e}")
-                logger.critical(traceback.format_exc())
 
-            # 🆕 关键修复：注册根路径以兼容旧版客户端/指令直接请求插件目录的行为
+            # 4. Root Path (Critical for B-side compatibility)
             logger.critical(f"🏠 [A2A Gateway] >>> 尝试注册 {prefix} (根路径) POST 路由")
             try:
                 self.context.register_web_api(
@@ -273,7 +253,7 @@ class A2AGatewayPlugin(Star):
         return {
             "name": self._agent_name,
             "description": self._agent_desc,
-            "version": "1.3.2",
+            "version": "1.3.4",
             "capabilities": {
                 "streaming": False,
                 "pushNotifications": False,
@@ -286,9 +266,9 @@ class A2AGatewayPlugin(Star):
         }
 
     async def _handle_a2a_message(self, *args, **kwargs) -> Dict[str, Any]:
-        logger.info("[A2A Gateway] >>> 收到 /api/a2a/proxy 请求")
-        self._cleanup_stale_requests(max_age=60.0)
+        logger.info("[A2A Gateway] >>> 收到 /api/a2a/proxy 或 根路径 POST 请求")
 
+        # Token 校验
         if self.get_a2a_token():
             try:
                 from quart import request
@@ -322,29 +302,29 @@ class A2AGatewayPlugin(Star):
             if method == "message":
                 message_data = params.get("message", {})
                 content = message_data.get("content", "")
+                session_id = f"a2a-{msg_id}"
 
-                future: asyncio.Future = asyncio.Future()
-                self._pending_requests[str(msg_id)] = future
-                self._pending_timestamps[str(msg_id)] = time.time()
-
+                logger.info(f"[A2A Gateway] >>> 开始处理消息: {content[:30]}... (Session: {session_id})")
+                
+                # 🆕 v1.3.4: 直接使用 llm_generate 替代 FakeEvent/post_event
+                # 这是一个同步阻塞调用，非常适合 Request-Response 模式
                 try:
-                    await self._inject_message(content, msg_id)
-                    try:
-                        response_text = await asyncio.wait_for(
-                            future,
-                            timeout=self.config.get("timeout", 30.0)
-                        )
-                    except asyncio.TimeoutError:
-                        response_text = "处理超时，请重试"
-
+                    llm_result = await self.context.llm_generate(content, session_id=session_id)
+                    logger.info(f"[A2A Gateway] >>> LLM 回复成功: {llm_result[:30] if llm_result else 'Empty'}...")
+                    
+                    # 统一封装成 A2A 标准返回格式
                     return {
                         "jsonrpc": "2.0",
                         "id": msg_id,
-                        "result": {"content": [{"type": "text", "text": response_text}]}
+                        "result": {"content": [{"type": "text", "text": llm_result}]}
                     }
-                finally:
-                    self._pending_requests.pop(str(msg_id), None)
-                    self._pending_timestamps.pop(str(msg_id), None)
+                except Exception as e:
+                    logger.error(f"[A2A Gateway] >>> LLM 生成失败: {e}")
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "error": {"code": -32000, "message": f"LLM Generation Failed: {str(e)}"}
+                    }
 
             elif method == "tasks/cancel":
                 return {"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}}
@@ -363,63 +343,13 @@ class A2AGatewayPlugin(Star):
             return False
         return parts[1] == self.get_a2a_token()
 
-    async def _inject_message(self, content: str, msg_id: str):
-        try:
-            pending = self._pending_requests
-
-            class FakeEvent:
-                def __init__(self, text, msg_id, pending_dict):
-                    self.message_str = text
-                    self.session_id = f"a2a-{msg_id}"
-                    self.user_id = "a2a-gateway"
-                    self.group_id = None
-                    self.platform = "a2a"
-                    self.self_id = "a2a-gateway"
-                    self.message_id = f"a2a-msg-{msg_id}"
-                    self._pending = pending_dict
-                    self._source = "a2a-gateway"
-                    self.message = [Plain(text=text)]
-                    self.type = "a2a_message"
-                    self.raw_content = text
-                    self.msg_id = msg_id
-
-                @property
-                def plain_text(self) -> str:
-                    return self.raw_content
-
-                async def plain_result(self, text: str):
-                    return await self._pending_result(text)
-
-                async def result(self, message_chain: list):
-                    if message_chain and len(message_chain) > 0:
-                        first = message_chain[0]
-                        text = first.text if hasattr(first, 'text') else str(first)
-                    else:
-                        text = "(空响应)"
-                    return await self._pending_result(text)
-
-                async def _pending_result(self, text: str):
-                    future = self._pending.get(str(self.msg_id))
-                    if future and not future.done():
-                        future.set_result(text)
-                    to_send = text if isinstance(text, list) else Plain(text=text)
-                    return to_send if isinstance(to_send, list) else [to_send]
-
-            fake_event = FakeEvent(content, msg_id, pending)
-            await self.context.post_event(fake_event)
-        except Exception as e:
-            logger.error(f"[A2A Gateway] 注入消息失败: {e}")
-            future = self._pending_requests.get(str(msg_id))
-            if future and not future.done():
-                future.set_result(f"处理失败: {str(e)}")
-
     @command("a2a")
     async def handle_a2a(self, event: AstrMessageEvent):
         token = self.get_a2a_token()
         token_display = token[:8] + "..." if token else "未设置"
         routes_info = "\n   ".join(self.registered_routes) if self.registered_routes else "(等待注册)"
         yield event.plain_result(
-            f"📡 A2A Gateway v1.3.2\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"📡 A2A Gateway v1.3.4\n━━━━━━━━━━━━━━━━━━━━\n"
             f"Token: {token_display}\n"
             f"已注册路由:\n   {routes_info}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -430,8 +360,7 @@ class A2AGatewayPlugin(Star):
             f"/a2a_status    - 查看系统状态\n"
             f"/a2a_tasks     - 查看任务列表\n"
             f"/a2a_token     - 查看/重置 Token\n"
-            f"/a2a_force_reg - 强制重新注册路由\n"
-            f"/a2a_debug_ctx - 打印 context 属性"
+            f"/a2a_force_reg - 强制重新注册路由"
         )
 
     @command("a2a_list")
@@ -447,7 +376,6 @@ class A2AGatewayPlugin(Star):
 
     # ─── 参数解析通用函数 ──────────────────────────────────────────────────────
     def _strip_command_prefix(self, raw_text: str, cmd_name: str) -> str:
-        """去掉指令前缀，确保 args[0] 是参数而不是命令名"""
         for prefix in [f"/{cmd_name}", f"{cmd_name}"]:
             if raw_text.startswith(prefix):
                 return raw_text[len(prefix):].strip()
@@ -466,32 +394,22 @@ class A2AGatewayPlugin(Star):
         agent_card_url = args[1]
         token = args[2] if len(args) > 2 else ""
 
-        # ✅ 解析日志，打印防止低级错误
-        logger.info(f"[A2A Gateway] 解析添加参数: name={name}, url={agent_card_url}, token={'***' if token else '无'}")
-
         base_url = agent_card_url.rstrip("/")
         for suffix in ["/agent.json", "/.well-known/agent.json"]:
             if base_url.endswith(suffix):
                 base_url = base_url[:-len(suffix)]
                 break
 
-        skills = []
-        auth_type = ""
-
         try:
             card = await self.client.get_agent_card(agent_card_url, "bearer" if token else "", token)
             skills = card.get("skills", [])
-            if token:
-                auth_type = "bearer"
-            logger.info(f"[A2A Gateway] 获取 Agent Card 成功: {card.get('name', 'unknown')}")
         except Exception as e:
             logger.warning(f"[A2A Gateway] 获取 Agent Card 失败: {e}")
-            yield event.plain_result(f"⚠️ 获取 Agent Card 失败，节点可能无法通信: {e}")
-            # 允许添加，但记录警告
+            # 允许继续添加
 
         peer = Peer(
             name=name, agent_card_url=agent_card_url, base_url=base_url,
-            auth_type=auth_type, token=token,
+            auth_type="bearer" if token else "", token=token,
             skills=[s.get("id", str(s)) if isinstance(s, dict) else str(s) for s in skills],
             enabled=True, failure_count=0, created_at=datetime.now().isoformat()
         )
@@ -504,13 +422,10 @@ class A2AGatewayPlugin(Star):
     async def cmd_remove(self, event: AstrMessageEvent):
         raw_text = self._strip_command_prefix(event.message_str.strip(), "a2a_remove")
         args = raw_text.split()
-
         if len(args) < 1:
             yield event.plain_result("❌ 用法: `/a2a_remove <名称>`")
             return
         name = args[0]
-
-        logger.info(f"[A2A Gateway] 解析删除参数: name={name}")
 
         if name not in self.peers:
             yield event.plain_result(f"❌ 节点 [{name}] 不存在")
@@ -530,8 +445,6 @@ class A2AGatewayPlugin(Star):
 
         name = args[0]
         message_text = args[1]
-
-        logger.info(f"[A2A Gateway] 解析发送参数: name={name}, msg_len={len(message_text)}")
 
         if name not in self.peers:
             yield event.plain_result(f"❌ 节点 [{name}] 不存在")
@@ -588,7 +501,7 @@ class A2AGatewayPlugin(Star):
         routes_display = "\n   ".join(registered) if registered else "(延迟注册中，15秒后刷新)"
         yield event.plain_result(
             f"📊 A2A Gateway 状态\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"版本: v1.3.2\n"
+            f"版本: v1.3.4\n"
             f"节点: {total_peers} 个 (🟢 {enabled_peers})\n"
             f"任务: {total_tasks} 个 (✅ {completed_tasks})\n"
             f"存储: {self._storage_path}\n"
@@ -612,8 +525,6 @@ class A2AGatewayPlugin(Star):
         raw_text = self._strip_command_prefix(event.message_str.strip(), "a2a_token")
         args = raw_text.split()
 
-        logger.info(f"[A2A Gateway] Token 指令参数: {args}")
-
         if len(args) > 0 and args[0].lower() == "reset":
             new_token = secrets.token_urlsafe(32)
             self._a2a_token = new_token
@@ -630,14 +541,6 @@ class A2AGatewayPlugin(Star):
             yield event.plain_result("✅ 路由注册尝试完成，请发送 /a2a_status 查看结果")
         except Exception as e:
             yield event.plain_result(f"❌ 路由注册失败: {e}\n\n{traceback.format_exc()}")
-
-    @command("a2a_debug_ctx")
-    async def cmd_debug_ctx(self, event: AstrMessageEvent):
-        ctx_attrs = [attr for attr in dir(self.context) if not attr.startswith('_')]
-        yield event.plain_result(
-            f"📋 Context 属性列表 (共 {len(ctx_attrs)} 个):\n" + 
-            "\n".join(f"  • {attr}" for attr in ctx_attrs)
-        )
 
     def _extract_response(self, result: Dict[str, Any]) -> str:
         if not result:

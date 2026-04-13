@@ -2,6 +2,8 @@
 
 基于 **A2A (Agent-to-Agent)** 协议的跨 Agent 通信网关插件，专为 AstrBot 设计。
 
+> **当前版本: v1.3.4** (适配 AstrBot v4.22.3，使用 `llm_generate` 替代 `post_event`)
+
 ## 功能特性
 
 - 🔗 **多节点管理** - 添加、查看、删除远程 A2A Agent
@@ -26,7 +28,7 @@
     │  (Client)    │ ←── response ──     │  (Server)    │
     └──────────────┘                     └──────────────┘
            ↓                                   ↓
-    /api/a2a/proxy                      /api/a2a/proxy
+    /api/plug/astrbot_plugin_a2a_gateway   (根路径兼容)
     Authorization: Bearer <token>        Authorization: Bearer <token>
 ```
 
@@ -35,14 +37,15 @@
 | 指令 | 说明 |
 |------|------|
 | `/a2a` | 显示帮助菜单 |
-| `/a2a-list` | 查看已配置的节点列表 |
-| `/a2a-add <名称> <AgentCard URL> [Token]` | 添加新节点 |
-| `/a2a-remove <名称>` | 删除指定节点 |
-| `/a2a-send <节点名> <消息>` | 向节点发送消息 |
-| `/a2a-status` | 查看系统状态统计 |
-| `/a2a-tasks` | 查看最近任务记录 |
-| `/a2a-token` | 查看/重置 A2A 鉴权 Token |
-| `/a2a-token reset` | 重置 A2A 鉴权 Token |
+| `/a2a_list` | 查看已配置的节点列表 |
+| `/a2a_add <名称> <AgentCard URL> [Token]` | 添加新节点 |
+| `/a2a_remove <名称>` | 删除指定节点 |
+| `/a2a_send <节点名> <消息>` | 向节点发送消息 |
+| `/a2a_status` | 查看系统状态统计 |
+| `/a2a_tasks` | 查看最近任务记录 |
+| `/a2a_token` | 查看/重置 A2A 鉴权 Token |
+| `/a2a_token reset` | 重置 A2A 鉴权 Token |
+| `/a2a_force_reg` | 强制重新注册 Web 路由 |
 
 ## 快速开始
 
@@ -59,52 +62,34 @@ git clone https://github.com/Kess66666/astrbot_plugin_a2a_gateway.git
 
 查看当前 Token：
 ```bash
-/a2a-token
+/a2a_token
 ```
 
 ### 3. 添加节点
 
 ```bash
-/a2a-add my-agent https://remote-agent.com/agent.json
+/a2a_add my-agent http://192.168.1.100:6185/api/plug/astrbot_plugin_a2a_gateway/agent.json your_token
 ```
 
 ### 4. 发送消息
 
 ```bash
-/a2a-send my-agent 你好，请介绍一下自己
+/a2a_send my-agent 你好，请介绍一下自己
 ```
 
 ## 服务端接口
 
-### GET /agent.json
+### GET /api/plug/astrbot_plugin_a2a_gateway/agent.json
 返回 Agent Card（AID 协议），包含 Agent 元信息。
 
 **请求示例：**
 ```bash
 curl -H "Authorization: Bearer <your_token>" \
-     https://your-bot.com/agent.json
+     http://your-bot:6185/api/plug/astrbot_plugin_a2a_gateway/agent.json
 ```
 
-**响应示例：**
-```json
-{
-  "name": "AstrBot-A2A",
-  "description": "AstrBot powered A2A Agent",
-  "version": "1.0.0",
-  "capabilities": {
-    "streaming": false,
-    "pushNotifications": false,
-    "stateTransitions": false
-  },
-  "skills": [
-    {"id": "general-chat", "name": "General Chat"}
-  ],
-  "url": "/api/a2a/proxy"
-}
-```
-
-### POST /api/a2a/proxy
-处理 A2A JSON-RPC 消息。
+### POST /api/plug/astrbot_plugin_a2a_gateway (根路径)
+处理 A2A JSON-RPC 消息（兼容模式）。
 
 **请求示例：**
 ```bash
@@ -122,7 +107,7 @@ curl -X POST \
       }
     }
   }' \
-  https://your-bot.com/api/a2a/proxy
+  http://your-bot:6185/api/plug/astrbot_plugin_a2a_gateway
 ```
 
 **响应示例：**
@@ -138,6 +123,14 @@ curl -X POST \
 }
 ```
 
+## 版本更新日志
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| v1.3.4 | 2026-04-13 | ✅ 使用 `llm_generate` 替代废弃的 `post_event`<br>✅ 根路径 POST 兼容<br>✅ 移除 `FakeEvent` 注入逻辑 |
+| v1.3.2 | 2026-04-12 | 路由注册修复，版本号对齐 |
+| v1.0.0 | - | 初始版本 |
+
 ## A2A 协议说明
 
 本插件实现完整 A2A 协议，支持：
@@ -145,7 +138,7 @@ curl -X POST \
 - **Agent Card 发现** - 通过 `/agent.json` 获取 Agent 元信息
 - **JSON-RPC 2.0** - 使用标准 JSON-RPC 格式通信
 - **Bearer Token** - Bearer Token 认证（必填）
-- **虚拟事件注入** - 接收的 A2A 消息会注入到 AstrBot 核心处理
+- **直接 LLM 调用** - 服务端使用 `context.llm_generate` 直接获取 AI 回复
 
 ## 配置选项
 
@@ -154,10 +147,10 @@ curl -X POST \
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
 | timeout | 30.0 | 请求超时时间（秒） |
-| port_mode | reuse | 端口模式：reuse=复用主程序端口，standalone=独立端口 |
 | a2a_token | (自动生成) | A2A 服务端鉴权 Token |
 | agent_name | AstrBot-A2A | Agent 名称 |
 | agent_description | ... | Agent 描述 |
+| auto_register | true | 自动注册 Web 路由 |
 
 ## 存储位置
 
