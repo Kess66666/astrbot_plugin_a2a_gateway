@@ -3,6 +3,7 @@ import json
 import uuid
 import httpx
 import os
+import re
 import secrets
 import time
 import traceback
@@ -13,7 +14,7 @@ from datetime import datetime
 from astrbot.api.all import *
 from astrbot.api import AstrBotConfig
 
-logger.critical("💥💥💥 [A2A Gateway] v1.3.9 正在載入模塊... 💥💥💥")
+logger.critical("💥💥💥 [A2A Gateway] v1.4.0 正在載入模塊... 💥💥💥")
 
 @dataclass
 class Peer:
@@ -78,13 +79,21 @@ class A2AGatewayPlugin(Star):
         self._agent_name: str = self.config.get("agent_name", "AstrBot-A2A")
         self._agent_desc: str = self.config.get("agent_description", "AstrBot powered A2A Agent")
         self._auto_register: bool = self.config.get("auto_register", True)
+        
+        # 🕊️ v1.4.0 新增：记忆同步配置
+        self._memory_sync_enabled: bool = self.config.get("memory_sync_enabled", True)
+        self._memory_sync_dir: str = self.config.get("memory_sync_dir", "/AstrBot/data/learnings/")
 
         self._storage_path = self._get_storage_path()
         os.makedirs(self._storage_path, exist_ok=True)
+        
+        # 确保记忆同步目录存在
+        if self._memory_sync_enabled:
+            os.makedirs(self._memory_sync_dir, exist_ok=True)
 
         self._load_peers()
 
-        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.3.9), Context ID: {id(self.context)}")
+        logger.critical(f"🚀 [A2A Gateway] 插件实例化完成 (v1.4.0), Context ID: {id(self.context)}")
 
     # ─── Token Getter ───────────────────────────────────────────────────────────
     def get_a2a_token(self) -> str:
@@ -131,7 +140,7 @@ class A2AGatewayPlugin(Star):
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     async def init(self, context: Context, config: AstrBotConfig = None, **kwargs):
-        logger.critical(f"⚡ [A2A Gateway] >>> 开始异步初始化 (v1.3.9)")
+        logger.critical(f"⚡ [A2A Gateway] >>> 开始异步初始化 (v1.4.0)")
         await super().init(context)
 
         await asyncio.sleep(2)
@@ -142,7 +151,7 @@ class A2AGatewayPlugin(Star):
             loop = asyncio.get_event_loop()
             loop.call_later(15, lambda: asyncio.create_task(self.delay_register()))
 
-        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.3.9)")
+        logger.critical(f"🏁 [A2A Gateway] ✅ 插件初始化完成 (v1.4.0)")
 
     async def on_load(self):
         pass
@@ -171,7 +180,7 @@ class A2AGatewayPlugin(Star):
 
             # 1. Test Route
             async def test_handler(*args, **kwargs):
-                return {"status": "ok", "message": "A2A Gateway Test Route v1.3.9"}
+                return {"status": "ok", "message": "A2A Gateway Test Route v1.4.0"}
 
             self.context.register_web_api(route=f"{prefix}/test", view_handler=test_handler, methods=["GET"], desc="Test Route")
             self.registered_routes.append(f"/api/plug{prefix}/test")
@@ -203,11 +212,68 @@ class A2AGatewayPlugin(Star):
         return {
             "name": self._agent_name,
             "description": self._agent_desc,
-            "version": "1.3.9",
+            "version": "1.4.0",
             "capabilities": {"streaming": False, "pushNotifications": False, "stateTransitions": False},
             "skills": [{"id": "general-chat", "name": "General Chat", "description": "通用对话能力"}],
             "url": f"/api/plug/astrbot_plugin_a2a_gateway/api/a2a/proxy"
         }
+
+    # ─── 🕊️ v1.4.0 新增：记忆同步拦截器 ─────────────────────────────────────────
+    async def _handle_memory_sync(self, json_rpc_req: dict) -> Optional[dict]:
+        """
+        专门处理 Door 发来的记忆同步请求。
+        不走 LLM，直接提取内容并写入本地 learnings 目录。
+        返回成功响应，或 None（表示不是同步消息，应继续走 LLM 流程）。
+        """
+        if not self._memory_sync_enabled:
+            return None
+
+        try:
+            params = json_rpc_req.get("params", {})
+            message = params.get("message", {})
+            content = message.get("content", "")
+
+            # 1. 识别同步标记
+            if not content.startswith("🚨 **[SYSTEM_SYNC: MEMORY_UPDATE]**"):
+                return None
+
+            logger.info("🕊️ [Memory Sync] >>> 拦截到记忆同步消息，开始本地归档...")
+
+            # 2. 提取 Markdown 内容
+            md_content = content
+            if "```markdown" in content:
+                try:
+                    md_content = content.split("```markdown")[1].split("```")[0].strip()
+                except IndexError:
+                    md_content = content.split("📄 **Content**:")[1].strip() if "📄 **Content**:" in content else content
+
+            # 3. 提取文件名
+            filename = "synced_memory.md"
+            file_match = re.search(r"📂 \*\*File\*\*: (.*?\.md)", content)
+            if file_match:
+                filename = file_match.group(1).strip()
+
+            # 4. 写入本地 learnings 目录
+            target_path = os.path.join(self._memory_sync_dir, filename)
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.write(md_content)
+
+            logger.info(f"✅ [Memory Sync] 成功归档文件: {filename} -> {target_path}")
+
+            # 5. 构造 JSON-RPC 成功响应 (直接返回给 Door，不调用 LLM)
+            return {
+                "jsonrpc": "2.0",
+                "id": json_rpc_req.get("id"),
+                "result": {
+                    "content": [{"type": "text", "text": f"✅ 记忆已归档: {filename}"}]
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"❌ [Memory Sync] 处理失败: {e}")
+            logger.critical(traceback.format_exc())
+            return None
+    # ────────────────────────────────────────────────────────────────────────────
 
     async def _handle_a2a_message(self, *args, **kwargs) -> Dict[str, Any]:
         logger.info("[A2A Gateway] >>> 收到 A2A 消息请求")
@@ -241,6 +307,13 @@ class A2AGatewayPlugin(Star):
                 return {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}}
 
             if method == "message":
+                # 🕊️ v1.4.0 新增：先尝试拦截处理记忆同步
+                sync_response = await self._handle_memory_sync(body)
+                if sync_response:
+                    # 如果拦截器处理了（返回了非 None），直接返回，不调用 LLM！
+                    logger.info("🕊️ [Memory Sync] >>> 已拦截并处理，跳过 LLM 调用")
+                    return sync_response
+
                 message_data = params.get("message", {})
                 content = message_data.get("content", "")
 
@@ -303,9 +376,11 @@ class A2AGatewayPlugin(Star):
         token_display = token[:8] + "..." if token else "未设置"
         routes_info = "\n   ".join(self.registered_routes) if self.registered_routes else "(等待注册)"
         yield event.plain_result(
-            f"📡 A2A Gateway v1.3.9\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"📡 A2A Gateway v1.4.0\n━━━━━━━━━━━━━━━━━━━━\n"
             f"Token: {token_display}\n"
             f"已注册路由:\n   {routes_info}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🕊️ 记忆同步: {'✅ 已启用' if self._memory_sync_enabled else '❌ 已禁用'}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"/a2a_list      - 查看节点列表\n"
             f"/a2a_add       - 添加节点\n"
@@ -456,10 +531,13 @@ class A2AGatewayPlugin(Star):
         routes_display = "\n   ".join(registered) if registered else "(延迟注册中)"
         yield event.plain_result(
             f"📊 A2A Gateway 状态\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"版本: v1.3.9\n"
+            f"版本: v1.4.0\n"
             f"节点: {total_peers} 个 (🟢 {enabled_peers})\n"
             f"任务: {total_tasks} 个 (✅ {completed_tasks})\n"
             f"存储: {self._storage_path}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🕊️ 记忆同步: {'✅ 已启用' if self._memory_sync_enabled else '❌ 已禁用'}\n"
+            f"记忆目录: {self._memory_sync_dir}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"已注册路由:\n   {routes_display}"
         )
